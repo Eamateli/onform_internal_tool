@@ -103,11 +103,11 @@ Discussed and locked in 2026-05-26. The `.cursorrules` Phase 3 webhook spec ("an
 - [x] npm scripts: `db:push`, `db:generate`, `db:studio`, `postinstall: prisma generate`
 - [x] `npm run db:push` → all 6 tables + 5 enums materialized on Neon
 
-### 3b. Lib helpers (next)
+### 3b. Lib helpers ✅
 
-- [ ] `lib/prisma.ts` — singleton PrismaClient (dev hot-reload safe)
-- [ ] `lib/email.ts` — Resend wrapper + `notifyAdminsOfNewRequest()` helper
-- [ ] `lib/auth.ts` — `getOrCreateUserFromClerk()` (founding-admin bypass), `requireAdmin()`
+- [x] `lib/prisma.ts` — singleton PrismaClient cached on `globalThis` (dev hot-reload safe); imports from `@/lib/generated/prisma/client` (Prisma 6's new generator output)
+- [x] `lib/email.ts` — Resend wrapper. `sendEmail()` no-ops gracefully if `RESEND_API_KEY` is missing/placeholder. `notifyAdminsOfNewRequest()` queries every ACTIVE admin and emails them; failures logged, never thrown.
+- [x] `lib/auth.ts` — `getOrCreateUserFromClerk()` (founding-admin bypass via `FOUNDING_ADMIN_EMAIL`), `requireAdmin()` (redirect non-admins / blocked users)
 
 ### 3c. API routes (next)
 
