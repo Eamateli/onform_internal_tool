@@ -109,11 +109,18 @@ Discussed and locked in 2026-05-26. The `.cursorrules` Phase 3 webhook spec ("an
 - [x] `lib/email.ts` — Resend wrapper. `sendEmail()` no-ops gracefully if `RESEND_API_KEY` is missing/placeholder. `notifyAdminsOfNewRequest()` queries every ACTIVE admin and emails them; failures logged, never thrown.
 - [x] `lib/auth.ts` — `getOrCreateUserFromClerk()` (founding-admin bypass via `FOUNDING_ADMIN_EMAIL`), `requireAdmin()` (redirect non-admins / blocked users)
 
-### 3c. API routes (next)
+### 3c. API routes ✅
 
-- [ ] `app/api/webhooks/clerk/route.ts` — svix-verified, invitation-aware user creation
-- [ ] `app/api/request-access/route.ts` — public POST, blocklist check, admin notification
-- [ ] Test webhook end-to-end via ngrok
+- [x] `app/api/webhooks/clerk/route.ts` — uses `verifyWebhook` from `@clerk/backend/webhooks` (signature check via `CLERK_WEBHOOK_SIGNING_SECRET`). Handles `user.created` (invitation-aware + founding-admin bypass, wrapped in a Prisma transaction, AuditLog) and `user.deleted` (drops DB row, AuditLog).
+- [x] `app/api/request-access/route.ts` — public POST. Zod-validated body, IP captured from `x-forwarded-for`, blocklist check (EMAIL + IP), dedupe on existing PENDING request and existing User. **Silent-drop pattern**: every non-success outcome returns the same generic 200 response to prevent enumeration. Admin email fired best-effort via `notifyAdminsOfNewRequest`.
+- [x] `app/api/test-db/route.ts` — authed sanity check: returns counts (users / admins / pending requests / pending invitations).
+
+### 3d. Configure Clerk webhook (next — needs ngrok)
+
+- [ ] Run ngrok to expose `localhost:3000` to the internet
+- [ ] In Clerk dashboard → **Configure → Webhooks** → + Add Endpoint → URL `https://<ngrok>.ngrok-free.app/api/webhooks/clerk`, subscribe to `user.created` + `user.deleted`
+- [ ] Copy signing secret into `.env.local` as `CLERK_WEBHOOK_SIGNING_SECRET`
+- [ ] Restart dev server, test sign-up flow end-to-end
 
 ## Phase 4 — BigQuery connection
 
