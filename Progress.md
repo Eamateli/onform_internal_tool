@@ -231,9 +231,16 @@ Style direction: **minimalist, modern, friendly**. Broken into 6 sub-phases so w
 - [x] `app/layout.tsx` — Cormorant Garamond for `--font-heading` (serif headings like the marketing site).
 - [x] `components/site-nav.tsx` — logo uses `font-heading`.
 
-### 5f. Admin — Users tab, Invitations tab, Audit log
+### 5f. Admin — Users tab, Invitations tab, Audit log ✅
 
-Not started.
+- [x] `lib/admin/clerk-invitations.ts` — shared `createClerkInvitation()` + `revokeClerkInvitationsForEmail()` (48h TTL, redirect to `/sign-up`).
+- [x] `lib/admin/users.ts` — `promoteUser`, `demoteUser`, `blockUser`, `unblockUser`, `removeUser`. Safety: can't act on self; can't demote/block/remove last active admin. Block: email blocklist + Clerk `banUser`. Unblock: clears block + Clerk `unbanUser`. Remove: audit → Clerk `deleteUser` → local delete.
+- [x] `lib/admin/invitations.ts` — `revokeInvitation`, `resendInvitation` (revokes old row, creates fresh DB invitation + Clerk + Resend email).
+- [x] API routes: `POST /api/admin/users/[id]/{promote,demote,block,unblock,remove}` and `POST /api/admin/invitations/[id]/{resend,revoke}` — all gated with `requireAdminForApi()`.
+- [x] `components/admin/user-actions.tsx` + `invitation-actions.tsx` — confirmation dialogs mirroring request-actions pattern.
+- [x] Users + Invitations tabs wired with live buttons (self-row shows "You"; expired-but-PENDING invites still resend/revoke).
+- [x] `listRecentAuditLogs()` in `lib/data/admin.ts` + `components/admin/audit-log-panel.tsx` — last 50 entries shown below tab content in admin layout.
+- [x] `npx tsc --noEmit` passes.
 
 ## Phase 6 — Exports (Excel + PDF)
 

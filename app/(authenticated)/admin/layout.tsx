@@ -11,6 +11,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { getAdminBadgeCounts } from "@/lib/data/admin";
 import { AdminTabs } from "@/components/admin-tabs";
+import { AuditLogPanel } from "@/components/admin/audit-log-panel";
 
 export default async function AdminLayout({
   children,
@@ -37,6 +38,8 @@ export default async function AdminLayout({
       <AdminTabs counts={counts} />
 
       <div>{children}</div>
+
+      <AuditLogPanel />
     </div>
   );
 }

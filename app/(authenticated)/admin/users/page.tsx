@@ -1,9 +1,9 @@
-// Admin → Users tab.
-// 5d: read-only list. Promote / demote / remove / block actions arrive in 5f.
+// Admin → Users tab — list with promote / demote / block / unblock / remove.
 
+import { UserActions } from "@/components/admin/user-actions";
 import { listUsers } from "@/lib/data/admin";
+import { requireAdmin } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
+  const currentAdmin = await requireAdmin();
   const users = await listUsers();
 
   if (users.length === 0) {
@@ -61,7 +62,13 @@ export default async function UsersPage() {
                     {formatDate(u.createdAt)}
                   </TableCell>
                   <TableCell className="pr-4 text-right">
-                    <Actions role={u.role} status={u.status} disabled />
+                    <UserActions
+                      userId={u.id}
+                      email={u.email}
+                      role={u.role}
+                      status={u.status}
+                      isSelf={u.id === currentAdmin.id}
+                    />
                   </TableCell>
                 </TableRow>
               );
@@ -104,27 +111,6 @@ function StatusBadge({ status }: { status: "ACTIVE" | "BLOCKED" }) {
     <Badge className={cn("bg-rose-100 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100")}>
       Blocked
     </Badge>
-  );
-}
-
-function Actions({
-  role,
-  status,
-  disabled,
-}: {
-  role: "ADMIN" | "USER";
-  status: "ACTIVE" | "BLOCKED";
-  disabled?: boolean;
-}) {
-  return (
-    <div className="flex justify-end gap-1.5">
-      <Button size="sm" variant="outline" disabled={disabled}>
-        {role === "ADMIN" ? "Demote" : "Promote"}
-      </Button>
-      <Button size="sm" variant="destructive" disabled={disabled}>
-        {status === "ACTIVE" ? "Block" : "Unblock"}
-      </Button>
-    </div>
   );
 }
 

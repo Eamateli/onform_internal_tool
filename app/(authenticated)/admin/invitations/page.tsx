@@ -1,9 +1,8 @@
-// Admin → Invitations tab.
-// 5d: read-only list. Resend / revoke actions arrive in 5f.
+// Admin → Invitations tab — list with resend / revoke on pending invites.
 
+import { InvitationActions } from "@/components/admin/invitation-actions";
 import { listInvitations } from "@/lib/data/admin";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -70,7 +69,11 @@ export default async function InvitationsPage() {
                     {formatDate(inv.expiresAt)}
                   </TableCell>
                   <TableCell className="pr-4 text-right">
-                    <Actions status={effective} disabled />
+                    <InvitationActions
+                      invitationId={inv.id}
+                      email={inv.email}
+                      canAct={inv.status === "PENDING"}
+                    />
                   </TableCell>
                 </TableRow>
               );
@@ -114,22 +117,6 @@ function StatusBadge({ status }: { status: string }) {
     EXPIRED: "bg-muted text-muted-foreground",
   };
   return <Badge className={cn("hover:bg-current/0", styles[status])}>{status}</Badge>;
-}
-
-function Actions({ status, disabled }: { status: string; disabled?: boolean }) {
-  if (status !== "PENDING") {
-    return <span className="text-xs text-muted-foreground">—</span>;
-  }
-  return (
-    <div className="flex justify-end gap-1.5">
-      <Button size="sm" variant="outline" disabled={disabled}>
-        Resend
-      </Button>
-      <Button size="sm" variant="destructive" disabled={disabled}>
-        Revoke
-      </Button>
-    </div>
-  );
 }
 
 function formatDate(d: Date): string {

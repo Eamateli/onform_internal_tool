@@ -58,3 +58,17 @@ export async function listInvitations() {
     take: 100,
   });
 }
+
+// ─── Audit log (admin footer) ───────────────────────────────────────────────
+
+export async function listRecentAuditLogs() {
+  return prisma.auditLog.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      user: {
+        select: { email: true },
+      },
+    },
+  });
+}
