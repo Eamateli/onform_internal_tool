@@ -68,14 +68,23 @@ Discussed and locked in 2026-05-26. The `.cursorrules` Phase 3 webhook spec ("an
 | Founding admin email | `e.a.mateli@gmail.com` (env var `FOUNDING_ADMIN_EMAIL`) |
 | Rejection notification | **Silent** (no email to requester) |
 | Request expiry | **48 hours** — pending requests past 48h auto-expire (cron / on-read check) |
-| Block scope | **Email-only** (no IP block). IP rate-limiting handled separately in Phase 7. |
+| Block scope | **Email AND IP**. Stored in a `Block` table (`kind: EMAIL \| IP`, `value`, `reason`, `blockedBy`). Requester IP captured on `JoinRequest` (from `x-forwarded-for` headers) so it's available at block time. Caveat: shared NAT can sweep in legitimate users from the same network. |
+| Admin notification on new request | **Email via Resend to every `role: ADMIN` user** when a `JoinRequest` is created. Subject: "New access request — {email}". Body: email, name, reason, link to admin panel. Best-effort: if Resend fails the request is still saved. Brings Resend setup forward from Phase 5 → Phase 3. |
 | Clerk sign-up mode | **Restricted** (only invited emails can complete sign-up). Defense at Clerk's layer. |
 
 ### Plan impact on later phases
 
-- **Phase 3**: schema gains `JoinRequest` model and `User.status` field. Webhook reads matching `Invitation`, copies role into `User`. Founding-admin bypass: if `clerkUser.email === FOUNDING_ADMIN_EMAIL` and no `User` row exists, create with `role: ADMIN`.
-- **Phase 5**: admin panel grows three tabs — **Requests** (with badge), **Users** (promote/demote/remove), **Invitations** (resend/revoke). Public `/request-access` page added at the same time.
-- **Phase 7**: rate-limit `/api/request-access` (5/hr per IP), Zod validation on all admin POST bodies, audit-log every admin decision.
+- **Phase 3**: schema gains
+  - `JoinRequest` (incl. `ipAddress` so blocks can capture it),
+  - `Invitation` (already in `.cursorrules`),
+  - `Block` (`kind: EMAIL | IP`, `value`, `reason`, `blockedBy`, `createdAt`),
+  - `User.status` (`ACTIVE` / `BLOCKED`).
+
+  Webhook reads matching `Invitation`, copies role into `User`. Founding-admin bypass: if `clerkUser.email === FOUNDING_ADMIN_EMAIL` and no `User` row exists, create with `role: ADMIN`.
+
+  Resend setup is **pulled forward from Phase 5** because admins need to receive an email on every new `JoinRequest`. Will introduce `lib/email.ts` + `RESEND_API_KEY` env var here.
+- **Phase 5**: admin panel grows three tabs — **Requests** (with badge), **Users** (promote / demote / remove / block), **Invitations** (resend / revoke). Public `/request-access` page added at the same time.
+- **Phase 7**: rate-limit `/api/request-access` (5/hr per IP), Zod validation on all admin POST bodies, audit-log every admin decision. `/api/request-access` must check both the EMAIL and IP blocklists before accepting a submission.
 
 ## Phase 3 — Prisma + Railway PostgreSQL
 
