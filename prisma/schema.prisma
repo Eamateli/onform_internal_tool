@@ -1,0 +1,164 @@
+// OnForm Internal Tool — Prisma schema (Postgres on Neon).
+//
+// Source of truth for the application database. PostgreSQL only — we do not
+// migrate this schema to BigQuery (that's read-only, separate world).
+//
+// Architecture C (invitation-only access):
+//   • JoinRequest  — anonymous "please let me in" submissions awaiting admin review.
+//   • Invitation   — admin-issued tokens that unlock Clerk sign-up.
+//   • User         — actual app users (ACTIVE / BLOCKED), linked 1:1 to Clerk via clerkId.
+//   • Profile      — optional 1:1 extension on User.
+//   • Block        — email & IP blocklist enforced at /api/request-access.
+//   • AuditLog     — append-only record of sensitive actions.
+
+generator client {
+  provider = "prisma-client"
+  // Generate the client into `lib/generated/prisma` so it sits OUTSIDE the
+  // Next.js `app/` route tree (otherwise Next would scan generated files
+  // looking for routes).
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection (PgBouncer) — used by the app
+  directUrl = env("DIRECT_URL")   // unpooled — used by `prisma db push` / migrate
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Enums
+// ────────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum InvitationStatus {
+  PENDING  // emailed, not yet accepted
+  ACCEPTED // user signed up via the invitation
+  EXPIRED  // past expiresAt
+  REVOKED  // admin cancelled before acceptance
+}
+
+enum JoinRequestStatus {
+  PENDING   // awaiting admin decision
+  INVITED   // admin approved + Clerk invitation issued
+  REJECTED  // admin declined (silent — no email to requester)
+  EXPIRED   // 48h passed with no decision
+  BLOCKED   // admin chose to block; corresponding Block row(s) created
+}
+
+enum BlockKind {
+  EMAIL
+  IP
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Models
+// ────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id        String     @id @default(cuid())
+  clerkId   String     @unique // Clerk's user_xxx id
+  email     String     @unique
+  role      Role       @default(USER)
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  profile           Profile?
+  invitationsIssued Invitation[]  @relation("InvitedBy")
+  requestsDecided   JoinRequest[] @relation("DecidedBy")
+  blocksIssued      Block[]       @relation("BlockedBy")
+  auditLogs         AuditLog[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+model Profile {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  firstName String?
+  lastName  String?
+  jobTitle  String?
+  avatarUrl String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invitation {
+  id          String           @id @default(cuid())
+  email       String
+  role        Role             @default(USER)
+  token       String           @unique // random opaque token — sent in the invitation URL
+  status      InvitationStatus @default(PENDING)
+  invitedById String
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+  acceptedAt  DateTime?
+
+  invitedBy User @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([email])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model JoinRequest {
+  id           String            @id @default(cuid())
+  email        String
+  fullName     String?
+  reason       String? // optional context the requester provides
+  ipAddress    String? // captured from x-forwarded-for at submission time
+  status       JoinRequestStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+  decidedAt    DateTime?
+  decidedById  String?
+  expiresAt    DateTime // createdAt + 48h, set at insert
+
+  decidedBy User? @relation("DecidedBy", fields: [decidedById], references: [id])
+
+  @@index([email])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model Block {
+  id          String    @id @default(cuid())
+  kind        BlockKind
+  value       String // the email or IP string
+  reason      String?
+  blockedById String
+  createdAt   DateTime  @default(now())
+
+  blockedBy User @relation("BlockedBy", fields: [blockedById], references: [id])
+
+  // One blocklist entry per (kind, value). If the same admin blocks an email
+  // twice we want a single row, not duplicates.
+  @@unique([kind, value])
+  @@index([kind])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String? // null for unauthenticated actions (e.g. anonymous join request)
+  action       String // e.g. "user.invite", "user.block", "request.reject"
+  resourceType String? // "User" | "JoinRequest" | "Invitation" | "Block" | …
+  resourceId   String?
+  metadata     Json? // free-form context (old/new role, request payload, etc.)
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+}

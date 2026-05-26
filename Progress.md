@@ -88,9 +88,32 @@ Discussed and locked in 2026-05-26. The `.cursorrules` Phase 3 webhook spec ("an
 - **Phase 5**: admin panel grows three tabs — **Requests** (with badge), **Users** (promote / demote / remove / block), **Invitations** (resend / revoke). Public `/request-access` page added at the same time.
 - **Phase 7**: rate-limit `/api/request-access` (5/hr per IP), Zod validation on all admin POST bodies, audit-log every admin decision. `/api/request-access` must check both the EMAIL and IP blocklists before accepting a submission.
 
-## Phase 3 — Prisma + Railway PostgreSQL
+## Phase 3 — Prisma + Postgres (Neon) ⏳
 
-Not started.
+> Note: Railway free tier ended → switched to **Neon** (3GB free Postgres). Same Postgres under the hood — no schema changes needed.
+
+### 3a. Schema scaffolded and pushed ✅
+
+- [x] Installed `@prisma/client@6.19.3`, `prisma@6.19.3`, `resend@6.12.4`, `zod@4.4.3`, `dotenv@17.4.2`
+- [x] `prisma init` → `prisma.config.ts` + `prisma/schema.prisma`
+- [x] Configured `prisma.config.ts` to load `.env.local` (single source of truth — deleted auto-created `.env`)
+- [x] Schema written: `User` (with `UserStatus` ACTIVE/BLOCKED), `Profile`, `Invitation` (PENDING/ACCEPTED/EXPIRED/REVOKED), `JoinRequest` (PENDING/INVITED/REJECTED/EXPIRED/BLOCKED, with `ipAddress` + `expiresAt`), `Block` (kind EMAIL/IP), `AuditLog` (action + resource + metadata Json)
+- [x] Generator output set to `../lib/generated/prisma` (outside Next.js's `app/` route tree)
+- [x] `.gitignore` ignores `/lib/generated`
+- [x] npm scripts: `db:push`, `db:generate`, `db:studio`, `postinstall: prisma generate`
+- [x] `npm run db:push` → all 6 tables + 5 enums materialized on Neon
+
+### 3b. Lib helpers (next)
+
+- [ ] `lib/prisma.ts` — singleton PrismaClient (dev hot-reload safe)
+- [ ] `lib/email.ts` — Resend wrapper + `notifyAdminsOfNewRequest()` helper
+- [ ] `lib/auth.ts` — `getOrCreateUserFromClerk()` (founding-admin bypass), `requireAdmin()`
+
+### 3c. API routes (next)
+
+- [ ] `app/api/webhooks/clerk/route.ts` — svix-verified, invitation-aware user creation
+- [ ] `app/api/request-access/route.ts` — public POST, blocklist check, admin notification
+- [ ] Test webhook end-to-end via ngrok
 
 ## Phase 4 — BigQuery connection
 
