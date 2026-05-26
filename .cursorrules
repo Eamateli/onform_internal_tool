@@ -1,0 +1,733 @@
+# .cursorrules — OnForm Internal Tool
+
+> SOURCE OF TRUTH. Re-read the relevant section before EVERY action.
+> Companion doc: `cursor-teaching-guide.md` (long-form tutorial).
+> This file is the operational rulebook; the guide is the learning narrative.
+> Do not invent steps that contradict this file. If something is missing here,
+> ask the user before improvising.
+
+---
+
+## 0. HOW I (CURSOR) MUST OPERATE ON THIS PROJECT
+
+1. Before any task, scan this file for the relevant section (rules, current phase, env vars, troubleshooting).
+2. Default mode is **teaching, not autopilot**. The user is a beginner with Next.js. When asked to build, ALWAYS:
+   - Explain what each file does as I create it.
+   - Use TypeScript everywhere.
+   - Read existing files before editing.
+3. Two-pass learning method is the workflow:
+   - **Pass 1 (Build):** Cursor writes code, user reads and runs. Goal: working app.
+   - **Pass 2 (Teach):** Delete files, rebuild together one at a time, quiz the user.
+   - Do not skip Pass 2.
+4. Always test locally (`npm run dev` on `localhost:3000`) before pushing.
+5. Always commit at the end of a working phase with the exact commit message specified for that phase.
+6. If a step fails: paste the error back, do not guess silently.
+7. Never put secrets in code. Ever. They live in `.env.local` (dev) and Vercel env vars (prod).
+8. Never expose BigQuery credentials to the browser. All BigQuery calls go through `app/api/...` server routes.
+9. Authentication check happens FIRST in every API route. Role check FIRST in every admin route.
+10. One commit per working feature. If something breaks: `git reset --hard HEAD~1`.
+
+---
+
+## 1. WHAT WE'RE BUILDING
+
+A web app for the OnForm accountancy team that:
+- **Login** — Clerk (Google, email, magic links)
+- **Dashboard** — list of all clients with health metrics
+- **Client detail page** — drill into one client's P&L, runway, budget
+- **Admin panel** — invite team members, manage roles, view audit log
+- **Exports** — download client reports as Excel / PDF
+- **Connections** — one-click open into the client's Xero / Shopify / Data Studio
+
+**Reads from BigQuery warehouse — never writes back.** Read-only by design = secure by design.
+
+Outcome: a production-ready internal app reading from BigQuery.
+Total time: 4–6 hours, split across phases.
+
+---
+
+## 2. ARCHITECTURE
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                   USER'S BROWSER                             │
+│   Next.js Frontend (React components, Tailwind UI)           │
+│                          ↓ HTTPS                             │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+┌──────────────────────────▼───────────────────────────────────┐
+│         NEXT.JS API LAYER (server-side, Vercel)              │
+│   • Clerk middleware verifies every request                  │
+│   • Rate limiting (basic)                                    │
+│   • Audit logging for sensitive actions                      │
+└────────┬───────────────────────────────┬─────────────────────┘
+         │                               │
+         ▼                               ▼
+┌──────────────────────┐         ┌────────────────────────┐
+│  PostgreSQL          │         │   BigQuery             │
+│  (Railway)           │         │   (read-only)          │
+│  • users             │         │   • clients            │
+│  • profiles          │         │   • transactions       │
+│  • invitations       │         │   • v_profit_loss      │
+│  • audit_logs        │         │   • v_cash_runway      │
+│                      │         │   • v_budget_vs_actual │
+└──────────────────────┘         └────────────────────────┘
+```
+
+**Rule of separation:** PostgreSQL holds *app data* (who can use the app, what they've done). BigQuery holds *business data* (clients' financial numbers). They never mix.
+
+---
+
+## 3. TECH STACK (do not substitute)
+
+| Tool | Role | Why this one |
+|---|---|---|
+| Next.js 14 (App Router) | Framework — pages + API in one project | Industry standard, full-stack, Vercel-native |
+| TypeScript | Adds types to JavaScript | Catches bugs early |
+| Tailwind CSS | Utility classes for styling | Fast, no separate CSS files |
+| shadcn/ui | Pre-built React components | Copy-paste, fully owned by us |
+| Clerk | Authentication (login, signup, sessions) | SOC 2 compliant, free tier, drop-in |
+| Prisma | PostgreSQL ORM with TS safety | Industry standard, great DX |
+| PostgreSQL on Railway | App database | Reliable, generous free tier |
+| @google-cloud/bigquery | Reads BigQuery | Official Google library |
+| Resend | Invitation emails | Free tier, clean API |
+| Vercel | Hosting | Free tier, auto-deploys from GitHub |
+| GitHub | Code storage | Industry standard |
+| Cursor | AI-powered editor | Built on VSCode |
+
+---
+
+## 4. PREREQUISITES (free accounts)
+
+| Service | URL | Purpose |
+|---|---|---|
+| GitHub | github.com | Code storage |
+| Vercel | vercel.com | Hosting (sign in with GitHub) |
+| Clerk | clerk.com | Auth |
+| Railway | railway.app | PostgreSQL |
+| Resend | resend.com | Invitation emails |
+
+Google Cloud (BigQuery) is already set up.
+Cursor: download from cursor.com.
+
+---
+
+## 5. BEST PRACTICES — HARD RULES
+
+These shape every decision. They are non-negotiable.
+
+1. **Secrets in environment variables, never in code.**
+   - All API keys in `.env.local` (dev) and Vercel env vars (prod).
+   - `.env.local` must be in `.gitignore`.
+   - Reference via `process.env.X` in code.
+
+2. **Server-side only for sensitive operations.**
+   - BigQuery credentials NEVER reach the browser.
+   - All BigQuery queries go through Next.js API routes (`app/api/...`).
+   - Frontend calls API routes, never BigQuery directly.
+
+3. **Type everything.**
+   - TypeScript interfaces for every data shape.
+   - Zod schemas to validate API inputs.
+
+4. **Auth on every protected route.**
+   - Clerk middleware protects routes.
+   - Verify user role in API routes (don't trust the frontend).
+
+5. **One commit per working feature.**
+   - After each phase: `git add . && git commit -m "Phase X: description"`.
+   - Use the exact commit message in the phase block below.
+
+6. **Test locally before deploying.**
+   - `npm run dev`, test at `localhost:3000`.
+   - Only push to GitHub after it works locally.
+
+7. **Test remotely after deploying.**
+   - Open the Vercel URL after every deploy.
+   - 99% of "works locally, fails in prod" = env var missing/wrong.
+
+8. **Read-only BigQuery credentials.**
+   - Service account has ONLY `BigQuery Data Viewer` + `BigQuery Job User`.
+   - Even if leaked, attacker cannot modify data.
+
+---
+
+## 6. PHASE PLAN — WHERE WE ARE MATTERS
+
+Each phase has: **Goal → Steps → Files created → Test → Commit message.**
+Do phases in order. Don't move forward until the current phase's test passes.
+
+---
+
+### 📦 PHASE 0 — Set up your computer (15 min)
+
+**Goal:** Node, git, Cursor installed; workspace folder ready.
+
+**Steps:**
+- 0.1 Install Node.js (LTS) from nodejs.org. Verify: `node --version`, `npm --version`.
+- 0.2 Install git. Mac: usually present (`git --version`). Windows: git-scm.com.
+- 0.3 Install Cursor from cursor.com. Sign in (free tier; Pro $20/mo).
+- 0.4 Make workspace:
+  ```bash
+  mkdir -p ~/code
+  cd ~/code
+  ```
+
+**First Cursor conversation:** open `~/code` in Cursor, press `Cmd+L`/`Ctrl+L`, paste:
+> "I'm building an internal web app for an accountancy firm. The app will read financial data from BigQuery and let team members view client dashboards. I'm a beginner with Next.js. Before we write any code, can you ask me 5 clarifying questions about what I want?"
+
+---
+
+### 🏗️ PHASE 1 — Create Next.js project (20 min)
+
+**Goal:** Blank Next.js on `localhost:3000` with TypeScript + Tailwind.
+
+**Steps:**
+- 1.1 `cd ~/code && npx create-next-app@latest onform-internal-tool`
+  - TypeScript: **Yes**
+  - ESLint: **Yes**
+  - Tailwind: **Yes**
+  - `src/` directory: **No**
+  - App Router: **Yes**
+  - Customize import alias: **No** (keep `@/*`)
+- 1.2 `cd onform-internal-tool && cursor .`
+- 1.3 `npm run dev` → open http://localhost:3000 → see default page.
+- 1.4 Initialize git:
+  ```bash
+  git init
+  git add .
+  git commit -m "Phase 1: initial Next.js setup"
+  ```
+
+**Learning:**
+- Next.js = React (frontend) + API routes (backend) in one project.
+- App Router: files in `app/` become routes.
+- `npm run dev` = local dev server.
+- TS files: `.ts`, `.tsx`.
+
+**Ask Cursor:**
+> "Walk me through what's in this Next.js project. What does each top-level file and folder do? Show me the file tree and explain it."
+
+---
+
+### 🔐 PHASE 2 — Authentication with Clerk (30 min)
+
+**Goal:** Working login. `/` requires login. Logged-in users see a dashboard placeholder.
+
+**Steps:**
+- 2.1 Create Clerk app at clerk.com → name `OnForm Internal Tool` → enable Email + Google.
+- 2.2 Copy from Clerk → API Keys:
+  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (pk_test_...)
+  - `CLERK_SECRET_KEY` (sk_test_...)
+- 2.3 Create `.env.local` at project root with:
+  ```env
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+  CLERK_SECRET_KEY=sk_test_...
+  NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+  NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+  NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
+  NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+  ```
+- 2.4 Verify `.gitignore` contains `.env*.local`.
+- 2.5 `npm install @clerk/nextjs`
+- 2.6 Prompt Cursor:
+  > "Add Clerk authentication to this Next.js 14 App Router project. I need:
+  > 1. A middleware that protects all routes except /sign-in and /sign-up
+  > 2. A ClerkProvider wrapping the root layout
+  > 3. A /sign-in page using Clerk's `<SignIn />` component
+  > 4. A /sign-up page using Clerk's `<SignUp />` component
+  > 5. A /dashboard page that shows the user's email and a sign-out button
+  > 6. A landing page at / that redirects to /dashboard if logged in, /sign-in if not
+  > Explain what each file does as you create it. Use TypeScript. Follow Clerk's official Next.js 14 App Router pattern."
+- 2.7 Test: `npm run dev` → localhost:3000 → redirect to `/sign-in` → sign up → verify email → land on `/dashboard` → sign out works.
+- 2.8 Commit:
+  ```bash
+  git add .
+  git commit -m "Phase 2: Clerk auth working"
+  ```
+
+**Files created/modified:**
+- `middleware.ts`
+- `app/layout.tsx`
+- `app/sign-in/[[...sign-in]]/page.tsx`
+- `app/sign-up/[[...sign-up]]/page.tsx`
+- `app/dashboard/page.tsx`
+- `app/page.tsx`
+
+**Learning:**
+- Middleware runs before every page load — used here for auth.
+- ClerkProvider = React Context with user info.
+- `[[...sign-in]]` = Next.js catch-all route.
+- `NEXT_PUBLIC_*` env vars are browser-visible; others are server-only.
+
+**Ask Cursor:**
+> "Explain how the middleware.ts file works. What does it do, step by step, for each incoming request?"
+
+---
+
+### 💾 PHASE 3 — Database with Prisma + Railway (45 min)
+
+**Goal:** PostgreSQL on Railway with User / Profile / Invitation / AuditLog models. Prisma queries from TypeScript.
+
+**Steps:**
+- 3.1 Railway → sign in with GitHub → **+ New Project → Provision PostgreSQL** → copy `DATABASE_URL`.
+- 3.2 Add to `.env.local`:
+  ```env
+  DATABASE_URL="postgresql://postgres:..."
+  ```
+- 3.3 Install Prisma:
+  ```bash
+  npm install @prisma/client
+  npm install -D prisma
+  npx prisma init
+  ```
+- 3.4 Prompt Cursor for the schema:
+  > "Update this Prisma schema with these models. PostgreSQL. Add proper indexes and relationships.
+  > 1. User — id (cuid), clerkId (unique), email (unique), role (enum USER/ADMIN), createdAt, updatedAt
+  > 2. Profile — id, userId (User relation), firstName, lastName, jobTitle, avatarUrl
+  > 3. Invitation — id, email, role, invitedBy (User relation), token (unique), status (PENDING/ACCEPTED/EXPIRED), expiresAt, createdAt
+  > 4. AuditLog — id, userId (User relation), action, resourceType, resourceId, metadata (JSON), createdAt
+  > Explain each model and why we have it."
+- 3.5 `npx prisma db push` → tables created on Railway.
+- 3.6 `npx prisma generate` → TS types ready.
+- 3.7 Prompt Cursor:
+  > "Create a `lib/prisma.ts` file that exports a singleton Prisma client. Use the recommended Next.js pattern that prevents creating multiple clients in development hot-reload."
+- 3.8 Prompt Cursor for test API:
+  > "Create an API route at `app/api/test-db/route.ts` that:
+  > 1. Verifies the request has an authenticated Clerk user (use `auth()` from `@clerk/nextjs/server`)
+  > 2. Counts the number of users in the database
+  > 3. Returns JSON `{ status: 'ok', userCount: number }`
+  > Explain the auth pattern."
+  - Visit `localhost:3000/api/test-db` → `{ "status": "ok", "userCount": 0 }`.
+- 3.9 Prompt Cursor for webhook:
+  > "Modify the Clerk webhook to sync new users into our database. When a user signs up in Clerk:
+  > 1. Create a User row with their clerkId and email
+  > 2. Default role: USER
+  > 3. Make the first user ever to sign up an ADMIN automatically
+  > Use Clerk's webhook with svix verification. Create the handler at `app/api/webhooks/clerk/route.ts`."
+  - Clerk Dashboard → **Webhooks → + Add Endpoint** → URL `https://<domain>/api/webhooks/clerk` (local: use ngrok).
+  - Subscribe to `user.created`. Copy Signing Secret → `.env.local`:
+    ```env
+    CLERK_WEBHOOK_SECRET=whsec_...
+    ```
+- 3.10 Test end-to-end: restart dev → sign up with NEW email → `/api/test-db` returns `userCount: 1` → `npx prisma studio` confirms.
+- Commit:
+  ```bash
+  git add .
+  git commit -m "Phase 3: Prisma + Railway PostgreSQL working"
+  ```
+
+**Learning:** ORM, schema-first dev, webhooks, singleton pattern.
+
+**Ask Cursor:**
+> "Show me three different ways to query my database with Prisma. Explain what each does."
+
+---
+
+### 📊 PHASE 4 — Connect to BigQuery (30 min)
+
+**Goal:** Read `finance_data.clients` from the Next.js app via an API route. Show on dashboard.
+
+**Steps:**
+- 4.1 Google Cloud Console → IAM & Admin → Service Accounts → **+ Create Service Account**:
+  - Name: `onform-app-reader`
+  - Roles: `BigQuery Data Viewer` AND `BigQuery Job User` (NO MORE).
+  - Keys tab → **Add Key → Create new key → JSON → Create**. Save the JSON.
+- 4.2 Add to `.env.local`:
+  ```env
+  GOOGLE_PROJECT_ID=onform-data-warehouse
+  GOOGLE_APPLICATION_CREDENTIALS_JSON='{"type":"service_account",...full JSON on ONE LINE...}'
+  ```
+  ⚠️ JSON must be one line, single-quoted. If unsure, ask Cursor:
+  > "How do I store a multi-line JSON service account key as a single env variable in Next.js?"
+- 4.3 `npm install @google-cloud/bigquery`
+- 4.4 Prompt Cursor:
+  > "Create `lib/bigquery.ts` that:
+  > 1. Parses GOOGLE_APPLICATION_CREDENTIALS_JSON from env
+  > 2. Creates a singleton BigQuery client
+  > 3. Exports a `queryBigQuery<T>(sql: string): Promise<T[]>` function with TypeScript generics
+  > 4. Adds error handling that doesn't leak credential details
+  > Explain why generics are useful here."
+- 4.5 Prompt Cursor:
+  > "Create `app/api/clients/route.ts` that:
+  > 1. Verifies the user is authenticated with Clerk
+  > 2. Queries `finance_data.clients` with their key fields
+  > 3. Logs the request to the audit log (via Prisma)
+  > 4. Returns the clients as JSON
+  > 5. Handles errors gracefully
+  > Use the queryBigQuery helper. Define a TypeScript Client interface."
+- 4.6 Test `localhost:3000/api/clients` → JSON with 3 clients.
+- 4.7 Prompt Cursor:
+  > "Update `app/dashboard/page.tsx` to be a server component that:
+  > 1. Fetches the clients from `/api/clients`
+  > 2. Renders them in a clean table with Tailwind CSS
+  > 3. Columns: Client Name, Industry, Annual Revenue (formatted as £), Status
+  > 4. Show a heading 'Clients' and a count of total clients
+  > Use proper TypeScript types."
+- 4.8 Test `localhost:3000/dashboard` → 3 clients (Acme, Beta, Gamma).
+- Commit:
+  ```bash
+  git add .
+  git commit -m "Phase 4: BigQuery connected, clients showing on dashboard"
+  ```
+
+**Learning:** service accounts, least privilege, API routes vs pages, server components.
+
+**Ask Cursor:**
+> "Why is it dangerous to put BigQuery credentials in the frontend? What attack would succeed if I did?"
+
+---
+
+### 🖥️ PHASE 5 — Build the UI (60 min)
+
+**Goal:** Polished UI: layout + nav + Dashboard, Client Detail, Admin Panel.
+
+**Steps:**
+- 5.1 Install shadcn/ui:
+  ```bash
+  npx shadcn@latest init
+  ```
+  Style: **Default** · Base color: **Slate** · CSS variables: **Yes**.
+  ```bash
+  npx shadcn@latest add button card table dialog input label form badge dropdown-menu
+  ```
+- 5.2 Prompt Cursor:
+  > "Create a `app/(authenticated)/layout.tsx` that:
+  > 1. Is a route group — all routes inside get authentication required
+  > 2. Has a top nav bar with: OnForm logo (text), Dashboard / Admin links, and a UserButton (from Clerk)
+  > 3. Has a max-width container for the main content
+  > 4. Uses Tailwind, looks professional, similar to Linear or Vercel dashboards
+  > Move dashboard/page.tsx into this group."
+- 5.3 Prompt Cursor:
+  > "Improve the dashboard page:
+  > 1. Use shadcn Card components — one card per client, in a grid
+  > 2. Each card shows: client name, industry badge, monthly revenue, monthly burn, cash runway months, and a 'View details →' link
+  > 3. The card has a status indicator (green dot if cash positive, red if low runway)
+  > 4. Fetch from `/api/clients-overview` — a NEW endpoint we'll create
+  > Then create `app/api/clients-overview/route.ts` that joins clients with v_cash_runway and v_profit_loss views."
+- 5.4 Prompt Cursor:
+  > "Create `app/(authenticated)/clients/[clientId]/page.tsx` that:
+  > 1. Fetches one client's full financial picture
+  > 2. Shows: client header (name, industry), scorecards (Revenue, Gross Profit, EBITDA, Cash, Runway)
+  > 3. A 'Connections' section with buttons that open in new tab: Xero, Shopify, Data Studio
+  > 4. The Data Studio button links to your actual dashboard URL (we'll add as env var)
+  > 5. Use shadcn Card and Button components
+  > Create `app/api/clients/[clientId]/route.ts` to fetch from BigQuery."
+  - Add to `.env.local`:
+    ```env
+    DATA_STUDIO_DASHBOARD_URL=https://lookerstudio.google.com/your-dashboard-link
+    ```
+- 5.5 Prompt Cursor:
+  > "Create `app/(authenticated)/admin/page.tsx` that:
+  > 1. Only ADMIN users can access (otherwise redirect to /dashboard)
+  > 2. Lists all users (from Prisma)
+  > 3. Has a button 'Invite member' that opens a dialog
+  > 4. Dialog asks for email + role, sends invitation via Resend
+  > 5. Shows audit log below — last 50 actions
+  > Create API routes:
+  > - GET `/api/admin/users` — list users (admin only)
+  > - POST `/api/admin/invitations` — create invitation (admin only)
+  > - GET `/api/admin/audit-log` — recent actions (admin only)"
+- 5.6 Prompt Cursor:
+  > "Create `lib/auth.ts` with a `requireAdmin()` helper that:
+  > 1. Gets the current user from Clerk
+  > 2. Looks them up in Prisma User table
+  > 3. Throws an error or redirects if not ADMIN
+  > 4. Returns the User object if they are
+  > Use this in all admin API routes."
+- 5.7 Test the full flow: admin sees dashboard → client → detail → admin panel → invite sends email → second user does NOT see Admin link.
+- Commit:
+  ```bash
+  git add .
+  git commit -m "Phase 5: UI complete with dashboard, client detail, admin panel"
+  ```
+
+**This is the biggest phase. Take a break.**
+
+---
+
+### 📤 PHASE 6 — Exports (Excel + PDF) (45 min)
+
+**Goal:** Buttons on client detail page that export to Excel and PDF.
+
+**Steps:**
+- 6.1 `npm install exceljs jspdf jspdf-autotable`
+- 6.2 Prompt Cursor:
+  > "Create `app/api/clients/[clientId]/export/excel/route.ts` that:
+  > 1. Verifies auth + audit logs the export
+  > 2. Fetches the client's P&L, transactions, and budget data from BigQuery
+  > 3. Generates an Excel file with 3 sheets: Summary, Transactions, Budget vs Actual
+  > 4. Uses ExcelJS, applies basic formatting (bold headers, currency format)
+  > 5. Returns the file as a download
+  > Then add an 'Export to Excel' button on the client detail page that hits this endpoint."
+- 6.3 Prompt Cursor:
+  > "Create `app/api/clients/[clientId]/export/pdf/route.ts` that:
+  > 1. Verifies auth + audit logs the export
+  > 2. Generates a clean PDF with: client name + month, key metrics (revenue, profit, runway), transactions table
+  > 3. Uses jsPDF + jspdf-autotable
+  > 4. Returns the file as a download
+  > Add a 'Export to PDF' button."
+- 6.4 Test:
+  - Open client detail → Excel download → opens cleanly.
+  - PDF download → opens cleanly.
+  - Audit log in admin panel shows both export actions.
+- Commit:
+  ```bash
+  git add .
+  git commit -m "Phase 6: Excel and PDF exports working"
+  ```
+
+---
+
+### 🛡️ PHASE 7 — Security hardening (30 min)
+
+**Goal:** Production-grade security without overengineering.
+
+**Steps:**
+- 7.1 Prompt Cursor:
+  > "Add basic rate limiting to all API routes:
+  > 1. Create `lib/rate-limit.ts` using `@upstash/ratelimit` (or a simple in-memory limiter for now)
+  > 2. 60 requests per minute per user
+  > 3. Returns 429 if exceeded
+  > 4. Apply to /api/clients, /api/clients-overview, /api/clients/[clientId], and all admin routes
+  > Explain why rate limiting matters."
+- 7.2 Confirm every sensitive action writes to AuditLog:
+  - Viewing client data
+  - Exports
+  - Inviting members
+  - Changing roles
+  Ask Cursor to scan the codebase for missing audit logs.
+- 7.3 Prompt Cursor:
+  > "Add Zod validation to all POST/PUT API routes:
+  > 1. Define a schema for each endpoint's expected body
+  > 2. Validate before processing
+  > 3. Return 400 with a useful error if validation fails
+  > Show me one example, then add it to all routes."
+- 7.4 Prompt Cursor:
+  > "Add security headers to next.config.js:
+  > - Content-Security-Policy
+  > - X-Frame-Options: DENY
+  > - X-Content-Type-Options: nosniff
+  > - Referrer-Policy: strict-origin-when-cross-origin
+  > - Permissions-Policy
+  > Explain what each header prevents."
+- 7.5 Final security checklist (must all pass):
+  - [ ] `.env.local` is gitignored
+  - [ ] No API keys outside `.env.local`
+  - [ ] Every API route checks auth FIRST
+  - [ ] Admin routes check role
+  - [ ] BigQuery service account has ONLY Data Viewer + Job User
+  - [ ] Rate limiting on all routes
+  - [ ] Zod validates all POST bodies
+  - [ ] Security headers in next.config.js
+  - [ ] HTTPS enforced (Vercel default)
+- Commit:
+  ```bash
+  git add .
+  git commit -m "Phase 7: Security hardening complete"
+  ```
+
+---
+
+### 🚀 PHASE 8 — Deploy to Vercel (30 min)
+
+**Goal:** Live URL like `onform-internal-tool.vercel.app` to share with Henry.
+
+**Steps:**
+- 8.1 Push to GitHub:
+  ```bash
+  gh repo create onform-internal-tool --private --source=. --remote=origin --push
+  ```
+  Or manually: new repo on github.com (private, no README) → then:
+  ```bash
+  git remote add origin https://github.com/<user>/onform-internal-tool.git
+  git branch -M main
+  git push -u origin main
+  ```
+- 8.2 Vercel → **+ Add New → Project** → import the repo → don't change defaults.
+  Add EVERY env var from `.env.local`:
+  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+  - `CLERK_SECRET_KEY`
+  - `NEXT_PUBLIC_CLERK_SIGN_IN_URL` = `/sign-in`
+  - `NEXT_PUBLIC_CLERK_SIGN_UP_URL` = `/sign-up`
+  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` = `/dashboard`
+  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` = `/dashboard`
+  - `CLERK_WEBHOOK_SECRET`
+  - `DATABASE_URL`
+  - `GOOGLE_PROJECT_ID`
+  - `GOOGLE_APPLICATION_CREDENTIALS_JSON`
+  - `DATA_STUDIO_DASHBOARD_URL`
+  - `RESEND_API_KEY` (when Resend is set up)
+  Click **Deploy** → wait ~2 min → get URL.
+- 8.3 Update Clerk:
+  - Clerk dashboard → app → **Domains** → add Vercel URL.
+  - Re-add webhook with new URL: `https://<vercel-url>/api/webhooks/clerk`.
+  - Copy new webhook secret → Vercel env vars → redeploy.
+- 8.4 Test in production: fresh sign-up → dashboard loads → exports work → admin panel works.
+
+**Debug rule:** if it works locally but fails on Vercel, **check env vars first** (Vercel → Settings → Environment Variables).
+
+---
+
+### 🎓 PHASE 9 — Teaching pass (recommended, don't skip)
+
+**Goal:** Cement the learning. This is where engineering instincts form.
+
+**Steps:**
+- 9.1 `git checkout -b learning`
+- 9.2 Delete a key file you don't fully understand.
+- 9.3 Prompt Cursor:
+  > "I deleted [filename]. Don't write it back yet. Instead, walk me through what this file should contain, step by step. After each section, ask me to write it myself, then check my work. We're learning."
+- Repeat for:
+  - `middleware.ts`
+  - `app/api/clients/route.ts`
+  - `lib/bigquery.ts`
+  - `lib/prisma.ts`
+- After each file, prompt:
+  > "Now quiz me with 5 questions about how this file works. After my answers, tell me what I got right and wrong."
+- 9.4 Add a small extra feature (favourites toggle, search bar, last-login display). Prompt Cursor:
+  > "I want to add [feature]. Don't write the code. Ask me how I think we should structure it, then guide me through writing it myself."
+
+---
+
+## 7. ENVIRONMENT VARIABLES — RUNNING LIST
+
+All belong in `.env.local` (dev) and Vercel env vars (prod). Never in code.
+
+```env
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+CLERK_WEBHOOK_SECRET=whsec_...
+
+# Database (Railway)
+DATABASE_URL=postgresql://postgres:...
+
+# Google Cloud / BigQuery
+GOOGLE_PROJECT_ID=onform-data-warehouse
+GOOGLE_APPLICATION_CREDENTIALS_JSON='{"type":"service_account",...}'  # one line, single-quoted
+
+# Data Studio
+DATA_STUDIO_DASHBOARD_URL=https://lookerstudio.google.com/...
+
+# Resend (email)
+RESEND_API_KEY=re_...
+```
+
+**Rules:**
+- `NEXT_PUBLIC_*` is exposed to the browser. Anything else is server-only.
+- Restart `npm run dev` after editing `.env.local` (env loads on start).
+
+---
+
+## 8. GLOSSARY
+
+| Term | Plain English |
+|---|---|
+| Component | Reusable piece of UI (button, card, form) |
+| Hook | React function for state/effects (`useState`, `useEffect`) |
+| Route | A URL path in the app (`/dashboard`) |
+| API route | A URL that returns JSON, not HTML |
+| Server component | Runs on the server, ships HTML only |
+| Client component | Runs in the browser; needs `'use client'` at top |
+| Middleware | Code that runs before any route — often for auth |
+| Webhook | An external service calling back when something happens |
+| Environment variable | Secret value stored outside the codebase |
+| Singleton | One shared instance across the app |
+| ORM | Library that turns SQL into TypeScript |
+| Migration | Versioned change to the database schema |
+| CORS | Browser security around cross-domain requests |
+| JWT | Signed token used for auth |
+| Service account | Credentials for the app (not a person) to access Google services |
+
+---
+
+## 9. TROUBLESHOOTING (when things break)
+
+**"Module not found":**
+- `npm install` again, restart dev server.
+
+**"Unauthorized":**
+- Check `.env.local` has all keys. Restart dev server (env loads on start).
+
+**BigQuery empty / errors:**
+- Check service account has correct roles.
+- Validate JSON env var: `node -e "console.log(JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON))"`.
+
+**Vercel deploy fails:**
+- Read the build log — error is usually specific.
+- 90% of failures: env variable missing or typo.
+
+**Clerk webhook not firing locally:**
+- `ngrok http 3000` → temporarily point Clerk webhook at the ngrok URL.
+
+**General "I don't understand":**
+- Paste error + relevant code into Cursor: "What does this error mean? Walk me through it."
+- Fallback: Stack Overflow / Next.js Discord.
+
+---
+
+## 10. DEFINITION OF DONE
+
+The project is done when:
+- [ ] Sign up with email → land at dashboard
+- [ ] Dashboard shows the 3 BigQuery clients
+- [ ] Click a client → see P&L + connections
+- [ ] Export to Excel works → opens cleanly
+- [ ] Export to PDF works → opens cleanly
+- [ ] Admin panel only visible to ADMIN role
+- [ ] Inviting a team member sends a real email
+- [ ] Audit log records every sensitive action
+- [ ] Deployed at a Vercel URL accessible from any browser
+- [ ] You can explain (without looking) how auth flows from sign-in → dashboard
+
+---
+
+## 11. WHAT TO SEND HENRY (final deliverable)
+
+```
+Subject: OnForm prototype — full-stack walkthrough
+
+Hi Henry,
+
+Following up on my application — I've built a working prototype that
+demonstrates the full data + tooling stack I'd build for OnForm.
+
+🔗 Live app: https://onform-internal-tool.vercel.app
+   Sign up with your work email — you'll be added as a viewer.
+
+📊 Live dashboards: [Data Studio link]
+
+📎 Attached:
+   - Architecture summary (PDF)
+   - Day 1 migration playbook (PDF, internal — not for distribution)
+
+What's there:
+- BigQuery warehouse with finance schema, P&L / runway / budget variance views
+- Data Studio dashboards (Executive, Inventory, CFO)
+- Next.js app with Clerk auth, exports, admin panel
+- All on free tier (~£0/month at current scale)
+
+Total infrastructure cost at 50 clients: under £300/month, vs ~£90K/year
+for a dedicated data engineer.
+
+Happy to walk through it on a call.
+
+Best,
+[Your name]
+```
+
+---
+
+## 12. FINAL REMINDERS TO MYSELF
+
+- Re-read this file's relevant section before acting.
+- Stay in the current phase until its test passes.
+- Use the exact commit messages above.
+- Teach as I build. Beginner audience.
+- Never leak credentials. Never skip auth checks. Never write to BigQuery.
+- The two-pass method matters more than the code.
