@@ -3,7 +3,6 @@
 // time this renders we know `dbUser.status === "ACTIVE"`.
 
 import Link from "next/link";
-import { currentUser } from "@clerk/nextjs/server";
 
 import { getOrCreateUserFromClerk } from "@/lib/auth";
 import { getClientsOverview, type ClientOverview } from "@/lib/data/clients";
@@ -17,9 +16,10 @@ export default async function DashboardPage() {
   const dbUser = await getOrCreateUserFromClerk();
   if (!dbUser) return null; // defensive — layout would already have intercepted
 
-  const clerkUser = await currentUser();
-  const firstName = clerkUser?.firstName;
-  const email = clerkUser?.primaryEmailAddress?.emailAddress;
+  // Greeting from our DB profile — avoids a second Clerk `currentUser()` call
+  // (that API round-trip was causing ClerkAPIResponseError 500s in dev).
+  const firstName = dbUser.profile?.firstName;
+  const email = dbUser.email;
 
   const clients = await getClientsOverview(dbUser);
 
