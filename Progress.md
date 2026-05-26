@@ -45,7 +45,9 @@
 
 ### Follow-ups (carried into Phase 3)
 
-- Current Clerk instance is **keyless** (unclaimed dev sandbox). User to claim it via the Clerk banner on `localhost:3000`, then paste real keys into `.env.local` and flip **Sign-up mode = Restricted**.
+- ✅ Keyless instance claimed; real Clerk app is `OnFromFinance` (rename to "OnForm Internal Tool" later if desired — purely cosmetic).
+- ✅ Real publishable + secret keys pasted into `.env.local`.
+- ✅ **Restricted mode enabled** at Clerk dashboard → Configure → Protect → Restrictions → "Enable restricted mode" (toggle ON). Sign-ups now require an invitation.
 
 ---
 
