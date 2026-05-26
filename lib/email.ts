@@ -111,6 +111,45 @@ export async function notifyAdminsOfNewRequest(req: {
   );
 }
 
+// Branded invitation email sent when an admin approves a join request.
+export async function sendInvitationEmail(args: {
+  email: string;
+  role: "USER" | "ADMIN";
+  signUpUrl: string;
+  expiresAt: Date;
+}): Promise<void> {
+  const expires = args.expiresAt.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const html = `
+    <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 540px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
+      <p style="margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280;">OnForm Internal Tool</p>
+      <h2 style="margin: 0 0 16px; font-size: 22px; font-weight: 600;">You're invited</h2>
+      <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #374151;">
+        An administrator approved your access request. Create your account before
+        <strong>${escapeHtml(expires)}</strong> (48 hours).
+      </p>
+      <p style="margin: 0 0 24px;">
+        <a href="${escapeHtml(args.signUpUrl)}" style="background: #111827; color: #ffffff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-family: -apple-system, system-ui, sans-serif;">Create account →</a>
+      </p>
+      <p style="margin: 0; font-size: 12px; color: #9ca3af; font-family: -apple-system, system-ui, sans-serif;">
+        Role: ${escapeHtml(args.role)} · Sign up with <strong>${escapeHtml(args.email)}</strong>
+      </p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: args.email,
+    subject: "You're invited to OnForm Internal Tool",
+    html,
+  });
+}
+
 // Minimal HTML escaper — defence-in-depth against XSS through email content
 // (admin name/email/reason are user-supplied).
 function escapeHtml(s: string): string {

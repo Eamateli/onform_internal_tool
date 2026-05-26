@@ -10,6 +10,8 @@
 //   • requireAdmin() — used in admin API routes / pages to 401/redirect
 //     non-admins. Trusts the Clerk session, then re-checks the DB role.
 
+import { cache } from "react";
+
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
@@ -42,7 +44,7 @@ function primaryEmail(clerkUser: ClerkUser): string | null {
  *      (in practice: middleware will already have blocked, or the user
  *      lands on an "awaiting setup" screen).
  */
-export async function getOrCreateUserFromClerk(): Promise<User | null> {
+export const getOrCreateUserFromClerk = cache(async (): Promise<User | null> => {
   const { userId: clerkId } = await auth();
   if (!clerkId) return null;
 
@@ -123,7 +125,7 @@ export async function getOrCreateUserFromClerk(): Promise<User | null> {
   // Anyone else who somehow has a Clerk session but no Invitation / no DB row
   // is NOT auto-created. Return null and let the caller decide.
   return null;
-}
+});
 
 /**
  * Require the current request to be authenticated AND have role: ADMIN.
@@ -142,6 +144,26 @@ export async function requireAdmin(): Promise<User> {
   }
   if (user.role !== "ADMIN") {
     redirect("/dashboard");
+  }
+  return user;
+}
+
+/**
+ * Same gate as `requireAdmin()` but for Route Handlers — returns JSON errors
+ * instead of redirecting (redirects are wrong for fetch() callers).
+ */
+export async function requireAdminForApi(): Promise<
+  User | Response
+> {
+  const user = await getOrCreateUserFromClerk();
+  if (!user) {
+    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+  if (user.status !== "ACTIVE") {
+    return Response.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  }
+  if (user.role !== "ADMIN") {
+    return Response.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
   return user;
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Cormorant_Garamond, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -11,6 +11,13 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Serif headings — matches the editorial tone on onformfinance.com.
+const headingSerif = Cormorant_Garamond({
+  variable: "--font-heading-serif",
+  subsets: ["latin"],
+  weight: ["500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -30,11 +37,12 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${headingSerif.variable} antialiased`}
+        suppressHydrationWarning
       >
-        <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
-          {children}
-        </body>
+        {/* `bg-background text-foreground` come from shadcn's @layer base
+            (see app/globals.css) — no need to repeat them here. */}
+        <body className="min-h-dvh">{children}</body>
       </html>
     </ClerkProvider>
   );

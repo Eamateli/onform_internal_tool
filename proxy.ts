@@ -15,6 +15,10 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  // The "request access" form is the public on-ramp for new users — page +
+  // its POST endpoint must both be reachable without a session.
+  "/request-access",
+  "/api/request-access",
   // Clerk's own webhook endpoint authenticates via Svix signature, not session.
   "/api/webhooks(.*)",
 ]);

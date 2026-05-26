@@ -167,9 +167,73 @@ The founding admin signed up in Phase 2 **before** the webhook was wired, so `us
 - React 19 fires multiple concurrent server-component renders in dev → multiple audit-log rows per page load. Production builds don't repeat the render; revisit if it shows up as production noise.
 - `BlockedUser` and `NotProvisioned` UI states are in the dashboard now; the request-access page that surfaces *new* users is still pending (Phase 5).
 
-## Phase 5 — UI (dashboard, client detail, admin)
+## Phase 5 — UI (dashboard, client detail, admin) ⏳
 
-Not started. Style direction: **minimalist, modern, friendly**.
+Style direction: **minimalist, modern, friendly**. Broken into 6 sub-phases so we can pause / commit between each.
+
+### 5a. shadcn/ui + (authenticated) layout ✅
+
+- [x] `npx shadcn@latest init -y -d` — detected Next.js + Tailwind v4, wrote `components.json` (style: base-nova, baseColor: neutral, iconLibrary: lucide), bootstrapped `lib/utils.ts` (the `cn()` helper) and `components/ui/button.tsx`, updated `app/globals.css` with the full set of CSS theme tokens (`--background`, `--foreground`, `--card`, etc., light + dark variants).
+- [x] `npx shadcn@latest add card badge dialog input label dropdown-menu separator` — 7 component files in `components/ui/`.
+- [x] `components/site-nav.tsx` — client component (`usePathname` for active-link styling). Sticky top, OnForm logo (link to /dashboard), Dashboard / Admin links (Admin only when `isAdmin === true`), Clerk UserButton on the right.
+- [x] `app/(authenticated)/layout.tsx` — server component for the route group. One DB call (`getOrCreateUserFromClerk()`) gets the user; passes `isAdmin` to `SiteNav`. If the user has no DB row or status !== ACTIVE, replaces `{children}` with a contextual callout (AwaitingProvisioning amber / Blocked rose) so individual pages don't have to repeat that logic.
+- [x] **Request-scoped cache** — wrapped `getOrCreateUserFromClerk` in React's `cache()` so the layout's call + the page's call dedupe into a single DB read per request.
+- [x] Moved `app/dashboard/page.tsx` → `app/(authenticated)/dashboard/page.tsx` (route group is URL-transparent, so /dashboard still resolves). Refactored to use shadcn `Card` + `Badge`; dropped its own header (layout owns the nav now) and its NotProvisioned/Blocked branches (layout owns those too).
+- [x] Switched root `app/layout.tsx` body from hand-rolled `bg-zinc-50 / dark:bg-zinc-950` to shadcn's `bg-background` / `text-foreground` (applied automatically via `@layer base` in `globals.css`); set `min-h-dvh` instead of `min-h-full flex flex-col`.
+- [x] Updated sign-in / sign-up pages to use `min-h-dvh` directly (they were relying on the old body flex layout).
+
+### 5b. Per-client detail page ✅
+
+- [x] `lib/data/clients.ts` extended with `getClientDetail(clientId, viewer)` — runs 4 BQ queries in parallel (`clients` master row, latest `v_profit_loss`, latest `v_cash_runway`, last 10 `transactions`). All parameterised (`@clientId`). Returns `null` when the client doesn't exist so the caller can `notFound()`. Audit log emits `client.detail.viewed` with the clientId + tx count. Refuses obviously bogus ids with a `^[\w-]{1,64}$` guard before touching BQ.
+- [x] `app/(authenticated)/clients/[clientId]/page.tsx` — Next.js 16 async `params`, server component, `force-dynamic`. Layout: back link → header (name + industry + status badges + latest period) → 5 KPI scorecards (annual rev, monthly rev, gross profit + margin, EBITDA + margin, cash on hand + runway category) → two-column row with **Recent transactions** table (left, span-2) and **Connections** panel (right) listing Xero / Shopify / Data Studio in a new tab.
+- [x] `components/ui/table.tsx` added via `npx shadcn add table` for the transactions list.
+- [x] Dashboard cards are now `<Link>`s to `/clients/[id]` with keyboard-focusable ring, group-hover shadow on the card.
+- [x] `NEXT_PUBLIC_DATA_STUDIO_DASHBOARD_URL` env var added to `.env.local.example` (and a placeholder to `.env.local`). Falls back to `https://lookerstudio.google.com/` if unset.
+- [x] Smoke-tested all four queries against the live warehouse for `client_001` (Acme Corp): 1 client row, 1 P&L row (Jan 2024), 1 runway row, 10 transactions.
+
+### 5c. Public /request-access page ✅
+
+- [x] `proxy.ts` whitelists `/request-access` and `/api/request-access` (existing endpoint from Phase 3c — page just had to be the missing front-end).
+- [x] `components/ui/textarea.tsx` added via `npx shadcn add textarea`.
+- [x] `app/request-access/page.tsx` — client component with:
+  - shadcn Card + Input + Textarea + Label + Button on a soft centered hero
+  - Three fields: email (required, `type=email`), full name (optional), reason (optional, max ~3 rows)
+  - **Honeypot** input (`name="website"`, visually hidden + `tabIndex=-1`) — naive bots that fill every field get a fake success and never reach the API.
+  - Loading state on the submit button (Lucide `Loader2` spinner)
+  - Field-level error rendering for the 400 case (Zod validation issues)
+  - **Silent-drop preserved on the client**: any non-validation outcome (200 generic-success, network error, etc.) flips the page into a success card with the same generic "Thanks…" message → no enumeration.
+- [x] Sign-in page gets a small "Don't have an account? **Request access**" link below the SignIn component (Clerk's hosted sign-up is locked by Restricted mode, so we route new users to /request-access instead of the unreachable /sign-up).
+- [x] Resend not yet configured → admin notification logs a warning and the request is still saved. Fully functional locally; emails light up automatically once `RESEND_API_KEY` is set.
+
+### 5d. Admin panel scaffold ✅
+
+- [x] `lib/data/admin.ts` — three list helpers (`listJoinRequests`, `listUsers`, `listInvitations`) + `getAdminBadgeCounts()` for the tab badges. All include sensible ordering and reasonable upper bounds (50 / 200 / 100).
+- [x] `components/admin-tabs.tsx` — client component (uses `usePathname` for active state). Underline-style tabs (GitHub / Vercel inspired). Each tab shows a count badge; pending requests / invitations use an **amber attention tint** when > 0, everything else is neutral.
+- [x] `app/(authenticated)/admin/layout.tsx` — runs `requireAdmin()` (redirects non-admins to /dashboard), fetches the badge counts once, renders the page header + tabs + children.
+- [x] `app/(authenticated)/admin/page.tsx` — now a simple `redirect("/admin/requests")` instead of a placeholder card (since the three tabs ARE the admin UI).
+- [x] `app/(authenticated)/admin/requests/page.tsx` — read-only table: email, name, reason (truncated), status badge (PENDING / INVITED / REJECTED / EXPIRED / BLOCKED with appropriate colour), received date, **disabled** Invite / Reject / Block buttons (wired in 5e).
+- [x] `app/(authenticated)/admin/users/page.tsx` — read-only table: display name (from Profile), email, role badge (Admin = indigo, User = neutral), status badge, joined date, **disabled** Promote/Demote + Block/Unblock buttons (wired in 5f).
+- [x] `app/(authenticated)/admin/invitations/page.tsx` — read-only table: email, role, status (PENDING / ACCEPTED / REVOKED / EXPIRED — auto-degrades to EXPIRED when `expiresAt` has passed even if DB still says PENDING), sent by, dates, **disabled** Resend / Revoke buttons (wired in 5f).
+- [x] SiteNav Admin pill already highlights for any `/admin/...` path so the top nav stays consistent when navigating between tabs.
+
+### 5e. Admin — Requests actions ✅
+
+- [x] `lib/admin/join-requests.ts` — `inviteJoinRequest`, `rejectJoinRequest`, `blockJoinRequest`. Invite: revokes stale invitations, creates `Invitation` + marks request `INVITED`, calls Clerk `createInvitation`, sends branded Resend email, rolls back on Clerk failure. Reject: silent, `REJECTED` + audit. Block: upserts `Block` rows for EMAIL + IP, `BLOCKED` + audit.
+- [x] `lib/auth.ts` — `requireAdminForApi()` for JSON 401/403 in Route Handlers (no redirects).
+- [x] `lib/email.ts` — `sendInvitationEmail()` with OnForm-styled HTML.
+- [x] API routes: `POST /api/admin/join-requests/[id]/{invite,reject,block}` with Zod validation on invite (role) and block (reason).
+- [x] `components/admin/request-actions.tsx` — confirmation dialogs + `router.refresh()` on success.
+- [x] Requests tab wired with live buttons (only for non-expired PENDING rows).
+
+### Brand refresh (OnForm Finance)
+
+- [x] `app/globals.css` — warm white canvas, charcoal primary aligned with [onformfinance.com](https://www.onformfinance.com/).
+- [x] `app/layout.tsx` — Cormorant Garamond for `--font-heading` (serif headings like the marketing site).
+- [x] `components/site-nav.tsx` — logo uses `font-heading`.
+
+### 5f. Admin — Users tab, Invitations tab, Audit log
+
+Not started.
 
 ## Phase 6 — Exports (Excel + PDF)
 
