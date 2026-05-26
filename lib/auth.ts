@@ -14,7 +14,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
-import type { User } from "@/lib/generated/prisma/client";
+import { Prisma, type User } from "@/lib/generated/prisma/client";
 
 const FOUNDING_ADMIN_EMAIL = process.env.FOUNDING_ADMIN_EMAIL?.toLowerCase();
 
@@ -67,15 +67,57 @@ export async function getOrCreateUserFromClerk(): Promise<User | null> {
 
   // Founding-admin bypass — only fires when the env var matches AND there's
   // no existing User row. After the first admin exists, this path is a no-op.
+  // Mirrors the webhook's user.created shape (User + Profile + AuditLog in
+  // a single transaction) so downstream code doesn't care which path created
+  // the row.
+  //
+  // Concurrency note: in dev, React can fire several server-component renders
+  // in parallel, all racing to insert this row. We rely on the DB's unique
+  // constraint on `clerkId` as the source of truth and catch P2002 to turn
+  // a "lost the race" into a quiet re-fetch.
   if (FOUNDING_ADMIN_EMAIL && email === FOUNDING_ADMIN_EMAIL) {
-    return prisma.user.create({
-      data: {
-        clerkId,
-        email,
-        role: "ADMIN",
-        status: "ACTIVE",
-      },
-    });
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            clerkId,
+            email,
+            role: "ADMIN",
+            status: "ACTIVE",
+            profile: {
+              create: {
+                firstName: clerkUser.firstName ?? null,
+                lastName: clerkUser.lastName ?? null,
+                avatarUrl: clerkUser.imageUrl ?? null,
+              },
+            },
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: "user.bootstrap_founding_admin",
+            resourceType: "User",
+            resourceId: user.id,
+            metadata: { email, role: "ADMIN", via: "lazy_dashboard_load" },
+          },
+        });
+
+        return user;
+      });
+    } catch (err) {
+      // P2002 = unique constraint violation. Another concurrent request won
+      // the create race; just re-fetch what they wrote.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        const row = await prisma.user.findUnique({ where: { clerkId } });
+        if (row) return row;
+      }
+      throw err;
+    }
   }
 
   // Anyone else who somehow has a Clerk session but no Invitation / no DB row

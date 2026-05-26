@@ -115,16 +115,57 @@ Discussed and locked in 2026-05-26. The `.cursorrules` Phase 3 webhook spec ("an
 - [x] `app/api/request-access/route.ts` — public POST. Zod-validated body, IP captured from `x-forwarded-for`, blocklist check (EMAIL + IP), dedupe on existing PENDING request and existing User. **Silent-drop pattern**: every non-success outcome returns the same generic 200 response to prevent enumeration. Admin email fired best-effort via `notifyAdminsOfNewRequest`.
 - [x] `app/api/test-db/route.ts` — authed sanity check: returns counts (users / admins / pending requests / pending invitations).
 
-### 3d. Configure Clerk webhook (next — needs ngrok)
+### 3d. Configure Clerk webhook ✅
 
-- [ ] Run ngrok to expose `localhost:3000` to the internet
-- [ ] In Clerk dashboard → **Configure → Webhooks** → + Add Endpoint → URL `https://<ngrok>.ngrok-free.app/api/webhooks/clerk`, subscribe to `user.created` + `user.deleted`
-- [ ] Copy signing secret into `.env.local` as `CLERK_WEBHOOK_SIGNING_SECRET`
-- [ ] Restart dev server, test sign-up flow end-to-end
+- [x] ngrok forwarding `https://151d-87-202-174-42.ngrok-free.app → localhost:3000`
+- [x] Clerk webhook endpoint added (subscribed to `user.created` + `user.deleted`)
+- [x] Signing secret copied into `.env.local` as `CLERK_WEBHOOK_SIGNING_SECRET` (renamed from earlier `CLERK_WEBHOOK_SECRET` — Clerk SDK's `verifyWebhook` looks for the `_SIGNING_SECRET` form by default)
+- [x] Dev server restarted
 
-## Phase 4 — BigQuery connection
+### 3e. Provision the founding admin's DB row ✅
 
-Not started. Service account JSON to be confirmed.
+The founding admin signed up in Phase 2 **before** the webhook was wired, so `user.created` never fired for them. Instead of forcing a delete-and-resignup, we lazy-provision from the dashboard.
+
+- [x] `app/dashboard/page.tsx` now calls `getOrCreateUserFromClerk()` on every render. Idempotent — no-op once the row exists.
+- [x] Founding-admin path in `lib/auth.ts` upgraded to mirror the webhook: creates `User` + `Profile` + `AuditLog` (`action: user.bootstrap_founding_admin`) in a single transaction.
+- [x] Concurrency fix: in dev, React 19 fired several concurrent server-component renders, all racing the create. Wrapped in a `try/catch` that swallows `P2002` (unique constraint on `clerkId`) and re-fetches the row that won the race.
+- [x] Dashboard now displays the user's role next to their email, and shows an amber "account not yet provisioned" callout when `dbUser === null` (i.e. signed in to Clerk but not yet in our DB — happens to anyone who somehow slipped past Restricted mode).
+
+## Phase 4 — BigQuery connection ✅
+
+### 4a. Credentials provisioned ✅
+
+- [x] Service account `onform-app-reader@onform-data-warehouse.iam.gserviceaccount.com` with **only** `BigQuery Data Viewer` + `BigQuery Job User` roles
+- [x] JSON key generated, moved to `~/secrets/onform-app-reader.json` (chmod 600)
+- [x] `GOOGLE_PROJECT_ID` + `GOOGLE_APPLICATION_CREDENTIALS_JSON` (single-line, single-quoted JSON) appended to `.env.local`
+- [x] `.env.local` tightened to mode `600`
+- [x] `npm install @google-cloud/bigquery` (v9.x)
+
+### 4b. Warehouse discovery ✅
+
+- [x] `scripts/discover-bq.mjs` — re-runnable introspection tool (`node scripts/discover-bq.mjs [--sample N]`). Lists datasets → tables/views → schemas, optionally with N sample rows.
+- [x] Discovered warehouse content:
+  - Dataset: `finance_data`
+  - Tables: `clients` (3), `transactions` (10), `cash_balances` (10), `budgets` (6), `inventory` (10)
+  - Views: `v_profit_loss`, `v_cash_runway`, `v_budget_vs_actual` (rows reported as 0 because they're views; sampling confirms data)
+  - `clients.revenue` is INTEGER (annual GBP); `v_cash_runway.runway_months` is **STRING** category ("CASH_POSITIVE" etc.), not a number.
+
+### 4c. BigQuery client + query helper ✅
+
+- [x] `lib/bigquery.ts` — lazy singleton `BigQuery` client; `queryBigQuery<T>(sql, params)` typed helper with parameterised query support; `unwrapBqValues()` flattens BQ's `{ value: "..." }` wrappers on DATE/TIMESTAMP fields; sanitised errors so credentials never appear in stack traces.
+
+### 4d. Shared data layer + API + dashboard ✅
+
+- [x] `lib/data/clients.ts` — `getClientsOverview(viewer: User)` joins `clients` ↔ `v_cash_runway`. Single source of truth for the overview; audit-logs every read with `action: clients.overview.viewed` (fire-and-forget — never blocks the response).
+- [x] `app/api/clients/route.ts` — `GET /api/clients` returns `{ ok, clients }`. Re-checks Clerk session + user status (`ACTIVE`) as defence-in-depth. `dynamic = "force-dynamic"` so Next.js doesn't try to statically render an empty version.
+- [x] `app/dashboard/page.tsx` — replaced placeholder with a 3-column card grid (`md:grid-cols-2 lg:grid-cols-3`). Each card shows client name, industry badge, status badge, annual revenue, current cash, net monthly cashflow (coloured), runway category, and a health dot (green/amber/red) based on net cashflow. Renders contextual states for `dbUser === null` (awaiting setup) and `BLOCKED` (rose callout).
+- [x] Both the API route and the dashboard call `getClientsOverview()` directly — no self-HTTP fetch, single round-trip per request.
+- [x] Verified end-to-end via inline SQL test (3 rows, expected nulls on Gamma's runway columns) + browser confirmation by user.
+
+### Notes / known follow-ups
+
+- React 19 fires multiple concurrent server-component renders in dev → multiple audit-log rows per page load. Production builds don't repeat the render; revisit if it shows up as production noise.
+- `BlockedUser` and `NotProvisioned` UI states are in the dashboard now; the request-access page that surfaces *new* users is still pending (Phase 5).
 
 ## Phase 5 — UI (dashboard, client detail, admin)
 
