@@ -17,7 +17,7 @@ import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
 import { enforceUserRateLimit } from "@/lib/rate-limit";
-import { Prisma, type Profile, type User } from "@/lib/generated/prisma/client";
+import { Prisma, type Profile, type User } from "@prisma/client";
 
 const FOUNDING_ADMIN_EMAIL = process.env.FOUNDING_ADMIN_EMAIL?.toLowerCase();
 

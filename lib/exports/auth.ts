@@ -2,7 +2,7 @@
 
 import { getOrCreateUserFromClerk } from "@/lib/auth";
 import { enforceUserRateLimit } from "@/lib/rate-limit";
-import type { User } from "@/lib/generated/prisma/client";
+import type { User } from "@prisma/client";
 
 export async function authorizeClientExport(): Promise<User | Response> {
   const user = await getOrCreateUserFromClerk();

@@ -4,7 +4,7 @@ import { randomBytes } from "crypto";
 
 import { prisma } from "@/lib/prisma";
 import { sendInvitationEmail } from "@/lib/email";
-import type { User } from "@/lib/generated/prisma/client";
+import type { User } from "@prisma/client";
 
 import {
   createClerkInvitation,

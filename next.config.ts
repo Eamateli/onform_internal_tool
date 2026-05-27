@@ -15,11 +15,6 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  // Ensure Prisma query-engine binaries (custom output path) ship with serverless
-  // functions on Vercel. Without this, runtime can't find libquery_engine-*.so.node.
-  outputFileTracingIncludes: {
-    "/*": ["./lib/generated/prisma/**/*"],
-  },
   async headers() {
     return [
       {

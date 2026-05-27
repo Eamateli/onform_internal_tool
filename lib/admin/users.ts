@@ -3,7 +3,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 
 import { prisma } from "@/lib/prisma";
-import type { User } from "@/lib/generated/prisma/client";
+import type { User } from "@prisma/client";
 
 type ActionResult =
   | { ok: true }

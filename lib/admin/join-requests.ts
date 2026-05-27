@@ -9,7 +9,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 
 import { prisma } from "@/lib/prisma";
 import { sendInvitationEmail } from "@/lib/email";
-import type { Role, User } from "@/lib/generated/prisma/client";
+import type { Role, User } from "@prisma/client";
 
 const INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
 

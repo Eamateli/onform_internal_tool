@@ -9,7 +9,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { queryBigQuery } from "@/lib/bigquery";
-import type { User } from "@/lib/generated/prisma/client";
+import type { User } from "@prisma/client";
 
 // Mirrors the columns we SELECT below. BigQuery FLOAT → JS number. STRING → string.
 // Anything nullable in BQ (LEFT JOIN can produce nulls for the runway columns

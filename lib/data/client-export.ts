@@ -4,7 +4,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { queryBigQuery } from "@/lib/bigquery";
-import type { User } from "@/lib/generated/prisma/client";
+import type { User } from "@prisma/client";
 
 import type {
   CashRunwaySnapshot,
