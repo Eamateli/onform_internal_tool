@@ -17,6 +17,9 @@ generator client {
   // Next.js `app/` route tree (otherwise Next would scan generated files
   // looking for routes).
   output   = "../lib/generated/prisma"
+  // Vercel serverless runs on rhel-openssl-3.0.x — include that engine binary
+  // at build time so it gets bundled into the deployment (native = local dev).
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
