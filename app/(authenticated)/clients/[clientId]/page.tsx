@@ -25,6 +25,7 @@ import {
   type ProfitLossSnapshot,
   type TransactionRow,
 } from "@/lib/data/clients";
+import { ClientExportButtons } from "@/components/client-export-buttons";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,7 +70,11 @@ export default async function ClientDetailPage({ params }: PageProps) {
         Back to dashboard
       </Link>
 
-      <ClientHeader client={client} period={pl?.period_month ?? null} />
+      <ClientHeader
+        client={client}
+        period={pl?.period_month ?? null}
+        clientId={clientId}
+      />
 
       <Scorecards pl={pl} runway={runway} annualRevenue={client.annual_revenue} />
 
@@ -88,9 +93,11 @@ export default async function ClientDetailPage({ params }: PageProps) {
 function ClientHeader({
   client,
   period,
+  clientId,
 }: {
   client: ClientMaster;
   period: string | null;
+  clientId: string;
 }) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-4">
@@ -105,11 +112,14 @@ function ClientHeader({
           <StatusBadge status={client.status} />
         </div>
       </div>
-      {period ? (
-        <p className="text-xs text-muted-foreground">
-          Latest period · {formatMonth(period)}
-        </p>
-      ) : null}
+      <div className="flex flex-col items-end gap-2">
+        {period ? (
+          <p className="text-xs text-muted-foreground">
+            Latest period · {formatMonth(period)}
+          </p>
+        ) : null}
+        <ClientExportButtons clientId={clientId} />
+      </div>
     </header>
   );
 }
@@ -274,6 +284,10 @@ function RecentTransactions({
             </TableBody>
           </Table>
         )}
+        <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
+          Make your table{" "}
+          <span className="text-muted-foreground/70">(coming soon)</span>
+        </p>
       </CardContent>
     </Card>
   );
