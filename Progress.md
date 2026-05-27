@@ -261,9 +261,58 @@ Style direction: **minimalist, modern, friendly**. Broken into 6 sub-phases so w
 - [x] `next.config.ts` — CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy.
 - [x] Audit logging already covers client views, exports, admin actions, and join requests (verified in Phase 5–6).
 
-## Phase 8 — Deploy to Vercel
+## Phase 8 — Deploy to Vercel (in progress)
 
-Not started.
+Repo: `https://github.com/Eamateli/onform_internal_tool` · branch `main`.
+
+### 8.1 Vercel project
+
+- [ ] [vercel.com](https://vercel.com) → **Add New → Project** → import `Eamateli/onform_internal_tool`
+- [ ] Framework: **Next.js** (auto-detected) · root `.` · build `npm run build` · no changes needed
+- [ ] Deploy once (will fail or be empty until env vars are set — that's normal)
+
+### 8.2 Environment variables
+
+Copy every value from your local `.env.local` into **Vercel → Project → Settings → Environment Variables** (Production + Preview + Development).
+
+| Variable | Notes |
+|---|---|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | From Clerk dashboard |
+| `CLERK_SECRET_KEY` | Server-only |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/sign-up` |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL` | `/dashboard` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL` | `/dashboard` |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | Set after step 8.3 |
+| `DATABASE_URL` | Neon **pooled** URL |
+| `DIRECT_URL` | Neon **direct** URL (for Prisma CLI only; still set on Vercel) |
+| `RESEND_API_KEY` | From Resend |
+| `FOUNDING_ADMIN_EMAIL` | `e.a.mateli@gmail.com` |
+| `GOOGLE_PROJECT_ID` | `onform-data-warehouse` |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | **Paste raw JSON only** — no surrounding quotes in Vercel UI |
+| `NEXT_PUBLIC_DATA_STUDIO_DASHBOARD_URL` | Looker Studio link |
+| `NEXT_PUBLIC_APP_URL` | **Your Vercel URL**, e.g. `https://onform-internal-tool.vercel.app` |
+
+Then **Redeploy** (Deployments → ⋮ → Redeploy).
+
+### 8.3 Clerk production settings
+
+- [ ] Clerk → **Configure → Domains** → add your Vercel URL
+- [ ] **Webhooks → Add endpoint** → `https://<vercel-url>/api/webhooks/clerk`
+- [ ] Subscribe to `user.created` and `user.deleted`
+- [ ] Copy new **Signing Secret** → Vercel env `CLERK_WEBHOOK_SIGNING_SECRET` → redeploy again
+
+### 8.4 Smoke test (production)
+
+- [ ] Open Vercel URL → redirects to sign-in
+- [ ] Sign in as founding admin → dashboard shows 3 clients
+- [ ] Open a client → exports download
+- [ ] Admin panel → requests / users / invitations / audit log
+- [ ] Submit `/request-access` from an incognito window (optional)
+
+### Commit (after deploy verified)
+
+`Phase 8: deployed to Vercel`
 
 ## Phase 9 — Teaching pass (Pass 2)
 

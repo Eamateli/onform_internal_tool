@@ -15,7 +15,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Plus } from "lucide-react";
 
 import { getOrCreateUserFromClerk } from "@/lib/auth";
 import {
@@ -79,8 +79,9 @@ export default async function ClientDetailPage({ params }: PageProps) {
       <Scorecards pl={pl} runway={runway} annualRevenue={client.annual_revenue} />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2">
           <RecentTransactions transactions={transactions} />
+          <MakeYourTablePlaceholder />
         </div>
         <Connections />
       </div>
@@ -284,7 +285,16 @@ function RecentTransactions({
             </TableBody>
           </Table>
         )}
-        <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
+      </CardContent>
+    </Card>
+  );
+}
+
+function MakeYourTablePlaceholder() {
+  return (
+    <Card className="border-dashed bg-muted/20">
+      <CardContent className="py-8 text-center">
+        <p className="text-sm text-muted-foreground">
           Make your table{" "}
           <span className="text-muted-foreground/70">(coming soon)</span>
         </p>
@@ -340,6 +350,21 @@ function Connections() {
             <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
           </a>
         ))}
+        <div
+          className={cn(
+            buttonVariants({ variant: "outline", size: "lg" }),
+            "h-auto w-full cursor-not-allowed justify-between py-2 opacity-60",
+          )}
+          aria-disabled="true"
+        >
+          <span className="flex flex-col items-start text-left">
+            <span className="font-medium leading-tight">Add Connection</span>
+            <span className="text-[11px] text-muted-foreground">
+              Coming soon
+            </span>
+          </span>
+          <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+        </div>
       </CardContent>
     </Card>
   );
