@@ -33,7 +33,7 @@ function getClient(): BigQuery {
 
   let credentials: Record<string, unknown>;
   try {
-    credentials = parseCredentialsJson(credsRaw);
+    credentials = JSON.parse(credsRaw);
   } catch {
     // Never include the raw value in the error — even a partial dump can
     // contain the private key.
@@ -42,20 +42,6 @@ function getClient(): BigQuery {
 
   _client = new BigQuery({ projectId, credentials });
   return _client;
-}
-
-/** Parse service-account JSON from env — tolerates .env.local-style wrapping. */
-function parseCredentialsJson(raw: string): Record<string, unknown> {
-  let s = raw.trim();
-  // .env.local often wraps the JSON in single quotes; Vercel must not — but
-  // strip them if someone pasted the .env.local value verbatim.
-  if (
-    (s.startsWith("'") && s.endsWith("'")) ||
-    (s.startsWith('"') && s.endsWith('"'))
-  ) {
-    s = s.slice(1, -1);
-  }
-  return JSON.parse(s) as Record<string, unknown>;
 }
 
 /**
