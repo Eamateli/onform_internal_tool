@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { notifyAdminsOfNewRequest } from "@/lib/email";
+import { enforceIpRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,10 @@ const GENERIC_SUCCESS = {
 };
 
 export async function POST(req: Request) {
+  // Tighter cap on the public write endpoint (10/min per IP).
+  const limited = enforceIpRateLimit(req, 10);
+  if (limited) return limited;
+
   // Parse + validate.
   let body: unknown;
   try {

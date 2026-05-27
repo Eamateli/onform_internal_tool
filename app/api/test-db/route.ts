@@ -8,6 +8,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { enforceUserRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,9 @@ export async function GET() {
   if (!userId) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
+
+  const limited = enforceUserRateLimit(userId);
+  if (limited) return limited;
 
   try {
     const [userCount, adminCount, pendingRequests, pendingInvitations] =

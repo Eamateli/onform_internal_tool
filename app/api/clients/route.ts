@@ -13,6 +13,7 @@
 
 import { getOrCreateUserFromClerk } from "@/lib/auth";
 import { getClientsOverview } from "@/lib/data/clients";
+import { enforceUserRateLimit } from "@/lib/rate-limit";
 
 // Prisma's query engine and Google's BigQuery client both need Node APIs.
 export const runtime = "nodejs";
@@ -36,6 +37,9 @@ export async function GET() {
       { status: 403 },
     );
   }
+
+  const limited = enforceUserRateLimit(user.id);
+  if (limited) return limited;
 
   try {
     const clients = await getClientsOverview(user);

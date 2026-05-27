@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { inviteJoinRequest } from "@/lib/admin/join-requests";
+import { parseJsonBody } from "@/lib/api/body";
 import { requireAdminForApi } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -18,21 +19,8 @@ export async function POST(
 
   const { id } = await ctx.params;
 
-  let body: unknown = {};
-  try {
-    const text = await req.text();
-    if (text) body = JSON.parse(text);
-  } catch {
-    return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const parsed = InviteSchema.safeParse(body);
-  if (!parsed.success) {
-    return Response.json(
-      { ok: false, error: "Invalid input", issues: parsed.error.flatten().fieldErrors },
-      { status: 400 },
-    );
-  }
+  const parsed = await parseJsonBody(req, InviteSchema);
+  if (!parsed.ok) return parsed.response;
 
   const result = await inviteJoinRequest(id, admin, parsed.data.role);
   if (!result.ok) {

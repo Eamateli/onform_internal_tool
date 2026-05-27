@@ -242,13 +242,24 @@ Style direction: **minimalist, modern, friendly**. Broken into 6 sub-phases so w
 - [x] `listRecentAuditLogs()` in `lib/data/admin.ts` + `components/admin/audit-log-panel.tsx` — last 50 entries shown below tab content in admin layout.
 - [x] `npx tsc --noEmit` passes.
 
-## Phase 6 — Exports (Excel + PDF)
+## Phase 6 — Exports (Excel + PDF) ✅
 
-Not started.
+- [x] Installed `exceljs`, `jspdf`, `jspdf-autotable`.
+- [x] `lib/data/client-export.ts` — `getClientExportData()` (P&L, runway, up to 1000 transactions, budget variance) + audit helper.
+- [x] `lib/exports/excel.ts` — three sheets: Summary, Transactions, Budget vs Actual (bold headers, GBP currency format).
+- [x] `lib/exports/pdf.ts` — client header, key metrics table, transactions table.
+- [x] `GET /api/clients/[clientId]/export/{excel,pdf}` — auth + audit log + file download.
+- [x] `components/client-export-buttons.tsx` on client detail header.
+- [x] `npx tsc --noEmit` passes.
 
-## Phase 7 — Security hardening
+## Phase 7 — Security hardening ✅
 
-Not started.
+- [x] `lib/rate-limit.ts` — in-memory limiter (60 req/min per user; 10 req/min per IP on `/api/request-access`). Returns 429 + `Retry-After`.
+- [x] Rate limiting wired into `requireAdminForApi()`, `authorizeClientExport()`, `/api/clients`, `/api/test-db`, and public request-access.
+- [x] `lib/api/body.ts` — shared `parseJsonBody()` + `EmptyBodySchema` for strict `{}` validation on body-less admin POSTs.
+- [x] All admin POST routes now validate JSON bodies with Zod (invite/block/reject/users/invitations).
+- [x] `next.config.ts` — CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy.
+- [x] Audit logging already covers client views, exports, admin actions, and join requests (verified in Phase 5–6).
 
 ## Phase 8 — Deploy to Vercel
 

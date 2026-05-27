@@ -16,6 +16,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
+import { enforceUserRateLimit } from "@/lib/rate-limit";
 import { Prisma, type Profile, type User } from "@/lib/generated/prisma/client";
 
 const FOUNDING_ADMIN_EMAIL = process.env.FOUNDING_ADMIN_EMAIL?.toLowerCase();
@@ -162,5 +163,7 @@ export async function requireAdminForApi(): Promise<
   if (user.role !== "ADMIN") {
     return Response.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
+  const limited = enforceUserRateLimit(user.id);
+  if (limited) return limited;
   return user;
 }
