@@ -10,6 +10,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 
+import { clerkAppearance } from "@/lib/clerk-appearance";
 import { cn } from "@/lib/utils";
 
 interface SiteNavProps {
@@ -69,7 +70,7 @@ export function SiteNav({ isAdmin }: SiteNavProps) {
         {/* UserButton must have something to render into; keep a min-size
             wrapper so the layout doesn't collapse during client-side hydration. */}
         <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-          <UserButton />
+          <UserButton appearance={clerkAppearance} />
         </div>
       </div>
     </header>
